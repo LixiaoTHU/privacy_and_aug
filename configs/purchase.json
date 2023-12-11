@@ -1,0 +1,17 @@
+{
+    "note": "modified from https://github.com/yigitcankaya/augmentation_mia",
+    "training_num_epochs": 50,
+    "regular_batch_size": 256,
+    "training_augmentations": ["none", "base", "smooth", "disturblabel", "noise", "distillation", "01flip"],
+    "augmentation_params": {
+        "distillation": [3, 1, 2, 5, 10],
+        "smooth": [0.05, 0.2, 0.1, 0.01, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8],
+        "disturblabel": [0.2, 0.01, 0.05, 0.1, 0.3, 0.4, 0.425, 0.45, 0.5, 0.525, 0.55, 0.575, 0.6],
+        "noise": [0.01, 0.025, 0.05, 0.075, 0.1, 0.125, 0.15, 0.175, 0.2, 0.225, 0.25, 0.275, 0.3, 0.325, 0.35],
+        "trades": [],
+        "pgdat": [],
+        "AWP": [],
+        "TradesAWP": [],
+        "01flip": [0.01, 0.05, 0.2, 0.1, 0.3]
+    }
+}
