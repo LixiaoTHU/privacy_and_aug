@@ -44,6 +44,7 @@ def get_arguments():
     parser.add_argument('--s_model', default=10, type=int, help='s_model')
     parser.add_argument('--t_model', default=20, type=int, help='t_model')
     parser.add_argument('--multi', action='store_true', default=False)
+    parser.add_argument('--aug_type', default="cutout", type=str, help='aug type')
     return parser.parse_args()
 
 args = get_arguments()
@@ -105,9 +106,12 @@ def ROC_curve(y, pred, save = False, show = True, name = "test"):
     return tpr_0_1, tpr_00_1, tpr_000_1, auroc
 
 
+
+
 if __name__ == "__main__":
     # aug_types = ["base", "smooth", "disturblabel", "noise", "cutout", "mixup", "jitter", "distillation", "pgdat", "trades", "AWP", "TradesAWP"]
-    aug_types = ["smooth"]
+    aug_types = ["cutout"]
+    assert args.aug_type in aug_types
 
     info = dict()
     info_10 = dict()

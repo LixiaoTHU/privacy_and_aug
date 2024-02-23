@@ -7,15 +7,12 @@ import argparse
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.utils import data
-import torch.optim as optim
 import logging
 import datetime
 
 import utils
 from models import ResNet18, MLP, CNN
 from dataset import get_loaders, root
-from thop import profile
 from advtrain import cal_adv
 
 if torch.cuda.is_available():
@@ -41,10 +38,10 @@ def get_arguments():
     parser.add_argument('--lr', type=float, default=0.1)
     parser.add_argument('--dataset', default = 'cifar10', choices=["cifar10", "cifar100", "svhn", "purchase", "locations"])
 
-    parser.add_argument('--epsilon', default=8, type=int, help='perturbation')
+    parser.add_argument('--epsilon', default=8, type=int, help='perturbation bound')
 
-    parser.add_argument('--s_model', default=0, type=int, help='s_model')
-    parser.add_argument('--t_model', default=128, type=int, help='t_model')
+    parser.add_argument('--s_model', default=0, type=int, help='the index of the first model')
+    parser.add_argument('--t_model', default=128, type=int, help='the index of the last model')
     parser.add_argument('--aug_type', default="pgdat", type=str, help='aug type')
     parser.add_argument('--save_results', action='store_true', default=False)
     parser.add_argument('--mode', default="train", choices=["all", "train", "target", "eval"])
@@ -248,7 +245,6 @@ def main(cfg, aug_type = "none", index = 0, aug_index = 0):
     else:
         criterion = nn.NLLLoss()
     test_criterion = nn.NLLLoss()
-    optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=0.9, weight_decay=5e-4)
 
 
     if args.exp_name == '':
@@ -270,13 +266,8 @@ def main(cfg, aug_type = "none", index = 0, aug_index = 0):
     utils.create_path(checkpoint_path)
 
     logger = utils.setup_logger(name="resnet18_" + str(index), log_file=log_file_path + ".log")
-    # profile_inputs = (torch.randn([1, 3, 32, 32]).to(device),)
-    # flops, params = profile(model, inputs=profile_inputs, verbose=False)
-    # flops = flops / 1e9
     starting_epoch = 0
 
-    # logger.info("param size = %fMB", utils.count_parameters_in_MB(model))
-    # logger.info("flops: %.4fG" % flops)
     logger.info("PyTorch Version: %s" % (torch.__version__))
     if torch.cuda.is_available():
         device_list = [torch.cuda.get_device_name(i) for i in range(0, torch.cuda.device_count())]
@@ -352,7 +343,6 @@ def main(cfg, aug_type = "none", index = 0, aug_index = 0):
     logger.info('Current loss: %.4f' % (vc_loss))
     logger.info('Current accuracy: %.2f' % (vc_acc))
 
-    # logging.shutdown()
     utils.delete_logger(name="resnet18_" + str(index), logger=logger)
     return ENV['best_acc']
 
@@ -372,30 +362,6 @@ if __name__ == "__main__":
         cfg = json.load(f)
 
 
-    # inference
-    # for i in range(8, 10):
-    #     print(cfg["training_augmentations"][i])
-    #     for  j in range(0, 128):
-    #         print(j, ", ok")
-    #         main(cfg, aug_type = cfg["training_augmentations"][i], index = j, aug_index = 0)
-        # main(cfg, aug_type = cfg["training_augmentations"][i], index = "all", aug_index = 0)
-        # main(cfg, aug_type = cfg["training_augmentations"][i], index = "target", aug_index = 0)
-
-
-    
-    # acclist = []
-    # for i in range(len(cfg['augmentation_params'][args.aug_type])):
-    #     acc = main(cfg, aug_type = args.aug_type, index = i, aug_index = i)
-    #     acclist.append(acc)
-    # print(args.aug_type)
-    # print(str(acclist))
-
-    # for i in range(10, 11):
-    #     print(cfg["training_augmentations"][i])
-    #     acc = main(cfg, aug_type = cfg["training_augmentations"][i], index = "all", aug_index = 0)
-    #     print(acc)
-
-    # main(cfg, aug_type =  args.aug_type, index = 0)
 
     for  j in range(args.s_model, args.t_model):
         print(j, ", ok")

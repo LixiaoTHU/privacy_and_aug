@@ -6,7 +6,6 @@ import argparse
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.utils import data
 import torch.optim as optim
 import logging
 import copy
@@ -16,7 +15,6 @@ import utils
 import random
 from models import *
 from dataset import get_loaders, root
-from thop import profile
 from advtrain import cal_adv
 from trades_awp import AdvWeightPerturb, TradesAWP
 
@@ -42,21 +40,17 @@ def get_arguments():
     parser.add_argument('--train', action='store_true', default=False)
     parser.add_argument('--lr', type=float, default=0.1)
     parser.add_argument('--dataset', default = 'cifar10', choices=["cifar10", "cifar100", "svhn", "purchase", "locations"])
-    # parser.add_argument('--awp-gamma', default=0.005, type=float,
-    #                 help='whether or not to add parametric noise')
 
-    parser.add_argument('--epsilon', default=8, type=int, help='perturbation')
+    parser.add_argument('--epsilon', default=8, type=int, help='perturbation bound')
 
-    parser.add_argument('--s_model', default=0, type=int, help='s_model')
-    parser.add_argument('--t_model', default=16, type=int, help='t_model')
+    parser.add_argument('--s_model', default=0, type=int, help='the index of the first model')
+    parser.add_argument('--t_model', default=128, type=int, help='the index of the last model')
     parser.add_argument('--aug_type', default="pgdat", type=str, help='aug type')
     parser.add_argument('--save_results', action='store_true', default=False)
     parser.add_argument('--mode', default="train", choices=["all", "train", "target", "eval"])
 
-    parser.add_argument('--use_random_smooth', action='store_true', default=False)
     parser.add_argument('--without_base', action='store_true', default=False)
     parser.add_argument('--suffix', default="")
-    parser.add_argument('--global_mode', default="train", type=str, choices=["train", "gap", "decide", "adv"])
     parser.add_argument('--cnn', action='store_true', default=False)
     return parser.parse_args()
 
@@ -130,13 +124,7 @@ def train(epoch, model, optimizer, trainloader, ENV, aug_type, criterion, cfg, t
             b_y_one_hot = torch.zeros(imgs.shape[0], model.num_classes, dtype=torch.float, device = device).scatter_(1, cids.view(-1, 1), 1)
 
             smoothing_coef = cfg['augmentation_params']['smooth'][aug_index]
-            if args.use_random_smooth:
-                aux = torch.zeros(b_y_one_hot.shape).to(b_y_one_hot.device)
-                aux[:,:10] += 1
-                aux=aux[:,torch.randperm(aux.size()[1])]
-                b_y_one_hot = (1-smoothing_coef) * b_y_one_hot + (smoothing_coef/(model.num_classes / 10)) * aux
-            else:
-                b_y_one_hot = (1-smoothing_coef) * b_y_one_hot + (smoothing_coef/model.num_classes)
+            b_y_one_hot = (1-smoothing_coef) * b_y_one_hot + (smoothing_coef/model.num_classes)
             
             loss = criterion(pred, b_y_one_hot)
         elif aug_type == "mixup":
@@ -176,44 +164,6 @@ def train(epoch, model, optimizer, trainloader, ENV, aug_type, criterion, cfg, t
             imgs = imgs.reshape(B, -1)
             pred = model(imgs)
             loss = criterion(pred, cids)
-        elif aug_type == "dandd":
-            
-            C = model.num_classes
-            if args.dataset == "cifar10":
-                alpha = 0.05
-            elif args.dataset == "cifar100":
-                alpha = 0.3
-            elif args.dataset == "svhn":
-                print("Not prepared yet!")
-                exit(0)
-            p_c = (1 - ((C - 1)/C) * alpha)
-            p_i = (1 / C) * alpha
-            b_y = cids.view(-1, 1)   # batch y
-
-            b_y_one_hot = (torch.ones(b_y.shape[0], C) * p_i).to(device)
-            b_y_one_hot.scatter_(1, b_y, p_c)
-            b_y_one_hot = b_y_one_hot.view( *(tuple(cids.shape) + (-1,) ) )
-
-            # sample from Multinoulli distribution
-            distribution = torch.distributions.OneHotCategorical(b_y_one_hot)
-            b_y_disturbed = distribution.sample()
-            b_y_disturbed = b_y_disturbed.max(dim=1)[1]  # back to categorical
-            
-            b_y_disturbed = b_y_disturbed.unsqueeze(0)
-            gcids = cids.unsqueeze(0)
-
-            T = 3
-            dt = teacher.forward_w_temperature(imgs, T).detach()
-            gg = dt.clone()
-
-            forindex = torch.arange(dt.shape[0]).to(dt.device)
-            logit_dis = dt[forindex, b_y_disturbed].clone()
-            dt[forindex, b_y_disturbed] = dt[forindex, gcids].clone()
-            dt[forindex, gcids] = logit_dis
-
-            
-            pred = model(imgs)
-            loss = criterion(pred, dt)
             
         elif aug_type == "trades":
             imgs_adv = cal_adv(model, criterion, aug_type, imgs, cids, eps = args.epsilon)
@@ -225,13 +175,7 @@ def train(epoch, model, optimizer, trainloader, ENV, aug_type, criterion, cfg, t
             loss_natural = criterion(pred, cids)
             loss = loss_natural + 6 * loss_robust
         elif aug_type ==  "pgdat":
-            # import cv2
-            # print(imgs.shape)
-            # print(cids[2])
-            # cv2.imwrite("test_ori.png", imgs[2].cpu().numpy().transpose(1,2,0)*255)
             imgs_adv = cal_adv(model, criterion, aug_type, imgs, cids, eps = args.epsilon)
-            # cv2.imwrite("test.png", imgs_adv[2].cpu().numpy().transpose(1,2,0)*255)
-            # exit(0)
 
             model.train()
             pred = model(imgs_adv)
@@ -368,7 +312,7 @@ def main(cfg, aug_type = "none", index = 0, aug_index = 0):
         proxy = copy.deepcopy(model)
 
     assert(aug_type in cfg['training_augmentations'])
-    if aug_type in ['distillation', 'smooth', 'mixup', 'dandd']:
+    if aug_type in ['distillation', 'smooth', 'mixup']:
         criterion = lambda pred, target: SoftLabelNLL(pred, target, reduce=True)
     else:
         criterion = nn.NLLLoss()
@@ -398,9 +342,6 @@ def main(cfg, aug_type = "none", index = 0, aug_index = 0):
     utils.create_path(checkpoint_path)
 
     logger = utils.setup_logger(name="resnet18_" + str(index), log_file=log_file_path + ".log")
-    # profile_inputs = (torch.randn([1, 3, 32, 32]).to(device),)
-    # flops, params = profile(model, inputs=profile_inputs, verbose=False)
-    # flops = flops / 1e9
     starting_epoch = 0
 
     # logger.info("param size = %fMB", utils.count_parameters_in_MB(model))
@@ -440,25 +381,6 @@ def main(cfg, aug_type = "none", index = 0, aug_index = 0):
         tname = "none" if args.without_base else "base"
         utils.load_model(os.path.join(checkpoint_path.replace("distillation", tname), 'model'), teacher)
         teacher.eval()
-    elif aug_type == "dandd":
-        if args.dataset == "cifar10":
-            if args.cnn:
-                teacher = CNN(num_classes=10, channels = 3).to(device)
-            else:
-                teacher = ResNet18().to(device)
-        elif args.dataset == "cifar100":
-            teacher = ResNet18(num_classes=100).to(device)
-        elif args.dataset == "svhn":
-            # teacher = MLP(num_classes=10).to(device)
-            teacher = CNN(num_classes=10).to(device)
-        else:
-            print("Not prepared yet!")
-            exit(0)
-        print(checkpoint_path.replace("dandd", "base"))
-        tname = "none" if args.without_base else "base"
-        utils.load_model(os.path.join(checkpoint_path.replace("dandd", tname), 'model'), teacher)
-        teacher.eval()
-        # return
     else:
         teacher = None
     if args.data_parallel:
@@ -473,7 +395,6 @@ def main(cfg, aug_type = "none", index = 0, aug_index = 0):
     elif aug_type == "AWP":
         proxy_optim = optim.SGD(proxy.parameters(), lr=args.lr)
         awp_adversary = AdvWeightPerturb(model=model, proxy=proxy, proxy_optim=proxy_optim, gamma=0.01)
-        # awp_adversary = AdvWeightPerturb(model=model, proxy=proxy, proxy_optim=proxy_optim, gamma=0.001)
     else:
         awp_adversary = None
     
@@ -533,66 +454,14 @@ if __name__ == "__main__":
     with open(config_path) as f:
         cfg = json.load(f)
     
-    # main function
-    if args.global_mode == "train":
-        results = []
-        for i in range(args.s_model, args.t_model):
-            # try:
-            tc_acc, vc_acc = main(cfg, aug_type = args.aug_type, index = i)
-            print(tc_acc, vc_acc)
-            # except:
-            #     print("i:", i)
-            #     results.append(i)
-        print(results)
-    elif args.global_mode == "decide":
-
-        # decide the hyper-parameter
-        results = []
-        for i in range(len(cfg["augmentation_params"][args.aug_type])):
-            vc_acc = main(cfg, aug_type = args.aug_type, index = 0, aug_index = i)
-            results.append(vc_acc)
-        print(results)
-    
-    elif args.global_mode == "gap":
-
-    
-        # Training and Test Gap
-        print("need set the training set")
-        exit(0)
-        info = dict()
-        info2 = dict()
-        totestl = []
-        it = [1,2,3,4,5,6,7,8,9,10,11,12]
-        for i in it:
-            print(cfg["training_augmentations"][i])
-            tc_acc_list = []
-            vc_acc_list = []
-            for  j in range(10, 20):
-                print(j, ", ok")
-                tc_acc, vc_acc = main(cfg, aug_type = cfg["training_augmentations"][i], index = j, aug_index = 0)
-                vc_acc_list.append(vc_acc)
-                tc_acc_list.append(tc_acc)
-            print(np.mean(tc_acc_list))
-            print(np.std(tc_acc_list))
-            print(np.mean(vc_acc_list))
-            print(np.std(vc_acc_list))
-            info2[cfg["training_augmentations"][i]] = (np.mean(tc_acc_list), np.std(tc_acc_list), np.mean(vc_acc_list), np.std(vc_acc_list))
-            info[cfg["training_augmentations"][i]] = (tc_acc_list, vc_acc_list)
-        # f = open(args.dataset + "_gap.txt", "w")
-        # f.write(str(info))
-        # f.close()
-        # f = open(args.dataset + "_gap_info.txt", "w")
-        # f.write(str(info2))
-        # f.close()
-    elif args.global_mode == "adv":
-        tc_acc_list = []
-        vc_acc_list = []
-        for  j in range(10, 13):
-            print(j, ", ok")
-            tc_acc, vc_acc = main(cfg, aug_type = args.aug_type, index = j, aug_index = 0)
-            vc_acc_list.append(vc_acc)
-            tc_acc_list.append(tc_acc)
-        print(np.mean(vc_acc_list))
-        print(np.std(vc_acc_list))
+    results = []
+    for i in range(args.s_model, args.t_model):
+        # try:
+        tc_acc, vc_acc = main(cfg, aug_type = args.aug_type, index = i)
+        print(tc_acc, vc_acc)
+        # except:
+        #     print("i:", i)
+        #     results.append(i)
+    print(results)
     
     
