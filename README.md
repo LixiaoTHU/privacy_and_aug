@@ -12,19 +12,32 @@ The official implementation of "On the Privacy Effect of Data Enhancement via th
 
 
 ### 3. File Structure
-
+```
+├── README.md
+├── advtrain.py     # Functions used for adversarial training.
+├── configs/        # Configuration files for training on different datasets.
+├── dataset.py      # Functions used for loading datasets.
+├── eval_privacy.py # Functions used for evaluating privacy using LiRA.
+├── inference.py    # Functions used for computing $\phi$ used in LiRA.
+├── models/         # DNN structures.
+├── requirements.txt
+├── sampleinfo/     # member and non-member information of 128 models used in LiRA.
+├── trades_awp.py   # Functions used for AWP and TRADES-AWP training.
+├── train.py        # Functions used for training (shadow) models.
+├── utils.py        # Other functions.
+└── utils_h.py      # Other functions.
+```
 
 
 
 ### 4. Usage
 
-This repository contains the code for training shadow models and performing LiRA. The following steps are the instructions for reproducing the results in the paper. On CIFAR-10, we take one data augmentation method, Cutout, as an example:
+This repository contains the code for training shadow models and performing LiRA. We support 12 data enhancement methods: "base", "smooth", "disturblabel", "noise", "cutout", "mixup", "jitter", "pgdat", "trades", "distillation", "AWP", "TradesAWP". The following steps are the instructions for reproducing the results in the paper. On CIFAR-10, we take one data augmentation method, Cutout, as an example:
 
 Train the 128 shadow models for Cutout:
 ```
 python train.py --train --s_model 0 --t_model 128 --aug_type cutout --dataset cifar10
 ```
-where ***
 
 
 Compute $\phi$ (required by LiRA) for each data point with multiple queries (Ensuring all 128 models trained):
