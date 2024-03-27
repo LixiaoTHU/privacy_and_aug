@@ -1,6 +1,6 @@
 # Privacy and Data Enhancement
 
-The official implementation of "On the Privacy Effect of Data Enhancement via the Lens of Memorization". In this work, we reproduced the LiRA method (Carlini et al. Membership Inference Attacks From First Principles) as the main privacy evaluation method for each data enhacement method.
+The official implementation of ["On the Privacy Effect of Data Enhancement via the Lens of Memorization"](https://ieeexplore.ieee.org/document/10478637). In this work, we reproduced the LiRA method (Carlini et al. Membership Inference Attacks From First Principles) as the main privacy evaluation method for each data enhacement method.
 
 ### 1. Dependencies
 - CUDA 11.0
@@ -55,10 +55,10 @@ python eval_privacy.py --save_results --multi
 
 If you find our work helpful for you, please consider to cite:
 ```
-@article{li2022privacy,
+@article{li2024privacy,
   title={On the Privacy Effect of Data Enhancement via the Lens of Memorization},
-  author={Xiao Li and Qiongxiu Li and Zhanhao Hu and Xiaolin Hu},
-  journal={arXiv preprint arXiv:2208.08270},
-  year={2022}
-}
+  author={Li, Xiao and Li, Qiongxiu and Hu, Zhanhao and Hu, Xiaolin},
+  journal={IEEE Transactions on Information Forensics and Security}, 
+  year={2024}
+  }
 ```
